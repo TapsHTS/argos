@@ -13,9 +13,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialiser les écouteurs d'événements
     initEventListeners();
     
-    // Pré-remplir l'URL du Google Sheet
-    document.getElementById('googleSheetUrl').value = 'https://docs.google.com/spreadsheets/d/1ySxMTYRMKVHCxfdroFCPNgr1-TI6ja8R-GBK9nl3k-w/edit?usp=sharing';
-
     // Masquer l'animation de chargement de la page après un court délai
     // Utilisation de window.onload pour s'assurer que tout (y compris les images) est chargé
     window.onload = () => {
