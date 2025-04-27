@@ -783,5 +783,26 @@
     
     <!-- Custom JavaScript -->
     <script src="js/main.js"></script>
+
+    <!-- Script to handle URL query parameter -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const sheetUrl = urlParams.get('sheet');
+            
+            if (sheetUrl) {
+                const googleSheetInput = document.getElementById('googleSheetUrl');
+                if (googleSheetInput) {
+                    googleSheetInput.value = sheetUrl;
+                    console.log('Google Sheet URL pre-filled from query parameter:', sheetUrl);
+                    // Optionnel : Déclencher l'importation automatiquement si l'URL est fournie
+                    const importButton = document.getElementById('importBtn');
+                    if (importButton) {
+                        importButton.click();
+                    }
+                }
+            }
+        });
+    </script>
 </body>
 </html>
