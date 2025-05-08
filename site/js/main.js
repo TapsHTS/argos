@@ -50,6 +50,17 @@ function initEventListeners() {
             }
         });
     });
+    
+    // Boutons de basculement de pourcentage (utilisation de la délégation d'événements)
+    document.body.addEventListener('click', function(event) {
+        if (event.target.closest('.toggle-percentage')) {
+            const button = event.target.closest('.toggle-percentage');
+            const chartId = button.dataset.chartId;
+            if (chartId && charts[chartId]) {
+                toggleChartPercentage(chartId);
+            }
+        }
+    });
 }
 
 // Fonction pour importer les données depuis Google Sheet
@@ -117,51 +128,6 @@ function extractSheetId(url) {
     return match ? match[1] : null;
 }
 
-// Fonction pour traiter les données brutes
-function processData(data) {
-    processedData = {
-        // Données démographiques
-        sexe: countValues(data, 'Quel est ton sexe ? '),
-        age: countValues(data, 'Quelle âge as-tu ?'),
-        niveau_etude: countValues(data, 'Quel est ton niveau d\'étude ? '),
-        filiere: countValues(data, 'Quelle est ta filière ?'),
-        revenu: countValues(data, 'As-tu un revenu ?'),
-        sources_revenu: countMultipleValues(data, 'Quelle(s) est/sont ta/tes source(s) de revenu(s) ?'),
-        
-        // Pratiques sportives
-        pratique_sportive: countValues(data, 'Pratiques-tu une activité sportive ? '),
-        sports_pratiques: countMultipleValues(data, 'Quel(s) sport(s) pratiques-tu ? '),
-        raisons_pratique: countMultipleValues(data, 'Pour quelle(s) raison(s) pratiques-tu ?'),
-        sport_chez_soi: countValues(data, 'Fais-tu du sport chez toi ?'),
-        frequentation_salle: countValues(data, 'Fréquentes-tu une salle de sport ?'),
-        raisons_non_frequentation: countMultipleValues(data, 'Si tu ne vas pas à la salle de sport, quelles sont les principales raisons ?'),
-        type_salle: countValues(data, 'Quel type de salle ?'),
-        prix_paye: countValues(data, 'Quel prix payes-tu chaque mois ?'),
-        
-        // Préférences pour la salle
-        interet_salle_etudiante: countValues(data, 'Sur une échelle de 1 à 5, quel est votre intérêt pour une salle de sport étudiante et participative à prix réduit ?'),
-        participation_vie_active: countValues(data, 'Serais-tu prêt à donner de ton temps pour participer à la vie active de la salle contre certains avantages ?'),
-        temps_participation: countValues(data, 'Si oui, combien de temps par semaine ?'),
-        prix_raisonnable: countValues(data, 'Quel prix par mois te paraît raisonnable pour la salle de sport ?'),
-        horaires_preferes: countMultipleValues(data, 'Quels horaires te conviendraient le mieux pour venir pratiquer ?'),
-        moments_disponibles: countMultipleValues(data, 'A quels moments serais-tu le plus disponible pour participer à la gestion de la salle ?'),
-        services_annexes: countMultipleValues(data, 'Quels services annexes te plairaient dans la salle ?'),
-        services_accompagnement: countMultipleValues(data, 'Quels services d’accompagnement t’intéresseraient le plus dans la salle de sport ?'),
-        evenements_inedits: countValues(data, 'Serais-tu intéressé par des événements inédits ?'),
-        conseils_pairs: countValues(data, 'Serais-tu plus à l\'aise à l\'idée de demander des conseils à des gens de ton âge ?'),
-        ambiance_souhaitee: countValues(data, 'Quelle ambiance souhaiterais-tu retrouver dans la salle ?'),
-        
-        // Équipements prioritaires
-        equipements_prioritaires: calculateEquipmentPriorities(data)
-    };
-    
-    // Calculer les statistiques globales
-    calculateGlobalStats();
-    
-    // Générer tous les graphiques
-    generateAllCharts();
-}
-
 // Fonction pour compter les occurrences des valeurs dans une colonne
 function countValues(data, columnName) {
     const counts = {};
@@ -174,233 +140,109 @@ function countValues(data, columnName) {
     return counts;
 }
 
+// Supprimer la fonction mapSportToCategory car elle n'est plus nécessaire
+/* 
+// Fonction pour mapper les sports à des catégories plus larges (SUPPRIMÉE)
+function mapSportToCategory(sport) { 
+    // ... code supprimé ...
+} 
+*/
+
 // Fonction pour compter les occurrences des valeurs multiples (séparées par des virgules)
 function countMultipleValues(data, columnName) {
     const counts = {};
-    
+    const respondentSet = new Set(); // Pour compter les répondants uniques
+
     // Vérifier si la colonne existe
     if (!data.length || !data[0].hasOwnProperty(columnName)) {
-        return counts;
+        console.warn(`La colonne "${columnName}" n'existe pas dans les données.`);
+        return { counts: counts, respondentCount: 0 };
     }
-    
-    // Traitement spécial pour les types de sports
-    if (columnName === 'Quel(s) sport(s) pratiques-tu ? ') {
-        // Catégories prédéfinies pour les sports
-        const sportCategories = {
-            'Musculation / Fitness': 0,
-            'Cardio (course, vélo, natation...)': 0,
-            'Sport collectif (foot, basket, volley...)': 0,
-            'Sport de combat (boxe, judo, MMA)': 0,
-            'Sport artistique (danse, zumba...)': 0,
-            'Sport de montagne (randonnée, escalade, ski, ...)': 0,
-            'Sport urbain (skate, roller, VTT, BMX, ...)': 0,
-            'Aucun': 0,
-            'sport de raquette': 0,
-            'Tennis': 0,
-            'Pilates': 0,
-            'Aquaponey': 0,
-            'Cascade': 0
-        };
-        
-        data.forEach(row => {
-            const valueStr = row[columnName];
-            if (valueStr && valueStr.trim() !== '') {
-                // Recherche directe des catégories complètes
-                Object.keys(sportCategories).forEach(category => {
-                    if (valueStr.includes(category)) {
-                        sportCategories[category]++;
-                    }
-                });
-                
-                // Si aucune catégorie n'est trouvée, traiter comme "Autre"
-                if (!Object.keys(sportCategories).some(category => valueStr.includes(category))) {
-                    counts['Autre'] = (counts['Autre'] || 0) + 1;
-                }
-            }
-        });
-        
-        // Fusionner les résultats
-        Object.keys(sportCategories).forEach(category => {
-            if (sportCategories[category] > 0) {
-                counts[category] = sportCategories[category];
-            }
-        });
-        
-        return counts;
-    }
-    
-    // Traitement spécial pour les services d'accompagnement - Correction du nom de colonne
-    if (columnName === 'Quels services d’accompagnement t’intéresseraient le plus dans la salle de sport ?') { // Correction ici: utilisation de ’ au lieu de '
-        data.forEach(row => {
-            const value = row[columnName];
-            if (value && value.trim() !== '') {
-                // Diviser la chaîne en services individuels séparés par des virgules
-                const services = value.split(',').map(s => s.trim());
-                
-                // Compter chaque service individuellement
-                services.forEach(service => {
-                    if (service !== '') {
-                        if (counts[service]) {
-                            counts[service]++;
-                        } else {
-                            counts[service] = 1;
-                        }
-                    }
-                });
-            }
-        });
-        
-        return counts;
-    }
-    
-    // Traitement spécial pour les services annexes
-    if (columnName === 'Quels services annexes te plairaient dans la salle ?') {
-        // Catégories prédéfinies pour les services annexes
-        const annexeCategories = {
-            'Spa / sauna': 0,
-            'Distributeurs': 0,
-            'Siège massant': 0,
-            'Balance de composition corporelle': 0,
-            'Espace abdos': 0,
-            'Coin salon': 0,
-            'Bain froid': 0,
-            'Salle de posing': 0
-        };
-        
-        data.forEach(row => {
-            const valueStr = row[columnName];
-            if (valueStr && valueStr.trim() !== '') {
-                // Recherche directe des catégories complètes
-                Object.keys(annexeCategories).forEach(category => {
-                    if (valueStr.includes(category)) {
-                        annexeCategories[category]++;
-                    }
-                });
-                
-                // Si aucune catégorie n'est trouvée, traiter comme "Autre"
-                if (!Object.keys(annexeCategories).some(category => valueStr.includes(category))) {
-                    counts['Autre'] = (counts['Autre'] || 0) + 1;
-                }
-            }
-        });
-        
-        // Fusionner les résultats
-        Object.keys(annexeCategories).forEach(category => {
-            if (annexeCategories[category] > 0) {
-                counts[category] = annexeCategories[category];
-            }
-        });
-        
-        return counts;
-    }
-    
-    // Traitement spécial pour les raisons de non-fréquentation
-    if (columnName === 'Si tu ne vas pas à la salle de sport, quelles sont les principales raisons ?') {
-        data.forEach(row => {
-            const value = row[columnName];
-            if (value && value.trim() !== '') {
-                // Diviser la chaîne en raisons individuelles séparées par des virgules
-                const reasons = value.split(',').map(r => r.trim());
-                
-                // Compter chaque raison individuellement
-                reasons.forEach(reason => {
-                    if (reason !== '') {
-                        if (counts[reason]) {
-                            counts[reason]++;
-                        } else {
-                            counts[reason] = 1;
-                        }
-                    }
-                });
-            }
-        });
-        
-        return counts;
-    }
-    
-    // Traitement spécial pour les raisons de pratique sportive
-    if (columnName === 'Pour quelle(s) raison(s) pratiques-tu ?') {
-        data.forEach(row => {
-            const value = row[columnName];
-            if (value && value.trim() !== '') {
-                // Diviser la chaîne en raisons individuelles séparées par des virgules
-                const reasons = value.split(',').map(r => r.trim());
-                
-                // Compter chaque raison individuellement
-                reasons.forEach(reason => {
-                    if (reason !== '') {
-                        if (counts[reason]) {
-                            counts[reason]++;
-                        } else {
-                            counts[reason] = 1;
-                        }
-                    }
-                });
-            }
-        });
-        
-        return counts;
-    }
-    
-    // Traitement spécial pour les horaires préférés
-    if (columnName === 'Quels horaires te conviendraient le mieux pour venir pratiquer ?') {
-        data.forEach(row => {
-            const value = row[columnName];
-            if (value && value.trim() !== '') {
-                // Diviser la chaîne en horaires individuels séparés par des virgules
-                const hours = value.split(',').map(h => h.trim());
-                
-                // Compter chaque horaire individuellement
-                hours.forEach(hour => {
-                    if (hour !== '') {
-                        if (counts[hour]) {
-                            counts[hour]++;
-                        } else {
-                            counts[hour] = 1;
-                        }
-                    }
-                });
-            }
-        });
-        
-        return counts;
-    }
-    
-    // Traitement spécial pour les sources de revenus
-    if (columnName === 'Quelle(s) est/sont ta/tes source(s) de revenu(s) ?') {
-        data.forEach(row => {
-            const value = row[columnName];
-            if (value && value.trim() !== '') {
-                // Diviser la chaîne en sources individuelles séparées par des virgules
-                const sources = value.split(',').map(s => s.trim());
-                
-                // Compter chaque source individuellement
-                sources.forEach(source => {
-                    if (source !== '') {
-                        if (counts[source]) {
-                            counts[source]++;
-                        } else {
-                            counts[source] = 1;
-                        }
-                    }
-                });
-            }
-        });
-        
-        return counts;
-    }
-    
-    // Traitement général pour les autres colonnes
-    data.forEach(row => {
+
+    data.forEach((row, index) => { // Ajouter l'index pour identifier les répondants
         const valueStr = row[columnName];
         if (valueStr && valueStr.trim() !== '') {
-            // Ne pas diviser les valeurs contenant des slashes
-            const value = valueStr.trim();
-            counts[value] = (counts[value] || 0) + 1;
+            respondentSet.add(index); // Ajouter l'index du répondant à l'ensemble
+            
+            // Google Sheets sépare généralement les réponses multiples par ", "
+            const values = valueStr.split(', ').map(v => v.trim()).filter(v => v !== ''); 
+
+            values.forEach(value => {
+                // Utiliser directement la valeur (qui correspond à une option cochée)
+                // On peut ajouter une condition pour ignorer "Aucun" si on ne veut pas le voir dans le graphique
+                // if (value.toLowerCase() === 'aucun') {
+                //     return; 
+                // }
+                counts[value] = (counts[value] || 0) + 1;
+            });
         }
     });
+
+    // Retourner les comptes et le nombre de répondants uniques
+    return { counts: counts, respondentCount: respondentSet.size };
+}
+
+// Fonction pour traiter les données brutes
+function processData(data) {
+    // Stocker les résultats de countMultipleValues
+    const sourcesRevenuResult = countMultipleValues(data, 'Quelle(s) est/sont ta/tes source(s) de revenu(s) ?');
+    const sportsPratiquesResult = countMultipleValues(data, 'Quel(s) sport(s) pratiques-tu ? ');
+    const raisonsPratiqueResult = countMultipleValues(data, 'Pour quelle(s) raison(s) pratiques-tu ?');
+    const raisonsNonFrequentationResult = countMultipleValues(data, 'Si tu ne vas pas à la salle de sport, quelles sont les principales raisons ?');
+    const horairesPreferesResult = countMultipleValues(data, 'Quels horaires te conviendraient le mieux pour venir pratiquer ?');
+    const momentsDisponiblesResult = countMultipleValues(data, 'A quels moments serais-tu le plus disponible pour participer à la gestion de la salle ?');
+    const servicesAnnexesResult = countMultipleValues(data, 'Quels services annexes te plairaient dans la salle ?');
+    const servicesAccompagnementResult = countMultipleValues(data, 'Quels services d’accompagnement t’intéresseraient le plus dans la salle de sport ?');
+
+    processedData = {
+        // Données démographiques
+        sexe: countValues(data, 'Quel est ton sexe ? '),
+        age: countValues(data, 'Quelle âge as-tu ?'),
+        niveau_etude: countValues(data, 'Quel est ton niveau d\'étude ? '),
+        filiere: countValues(data, 'Quelle est ta filière ?'),
+        revenu: countValues(data, 'As-tu un revenu ?'),
+        sources_revenu: sourcesRevenuResult.counts,
+        sources_revenu_respondents: sourcesRevenuResult.respondentCount,
+        
+        // Pratiques sportives
+        pratique_sportive: countValues(data, 'Pratiques-tu une activité sportive ? '),
+        sports_pratiques: sportsPratiquesResult.counts,
+        sports_pratiques_respondents: sportsPratiquesResult.respondentCount,
+        raisons_pratique: raisonsPratiqueResult.counts,
+        raisons_pratique_respondents: raisonsPratiqueResult.respondentCount,
+        sport_chez_soi: countValues(data, 'Fais-tu du sport chez toi ?'),
+        frequentation_salle: countValues(data, 'Fréquentes-tu une salle de sport ?'),
+        raisons_non_frequentation: raisonsNonFrequentationResult.counts,
+        raisons_non_frequentation_respondents: raisonsNonFrequentationResult.respondentCount,
+        type_salle: countValues(data, 'Quel type de salle ?'),
+        prix_paye: countValues(data, 'Quel prix payes-tu chaque mois ?'),
+        
+        // Préférences pour la salle
+        interet_salle_etudiante: countValues(data, 'Sur une échelle de 1 à 5, quel est votre intérêt pour une salle de sport étudiante et participative à prix réduit ?'),
+        participation_vie_active: countValues(data, 'Serais-tu prêt à donner de ton temps pour participer à la vie active de la salle contre certains avantages ?'),
+        temps_participation: countValues(data, 'Si oui, combien de temps par semaine ?'),
+        prix_raisonnable: countValues(data, 'Quel prix par mois te paraît raisonnable pour la salle de sport ?'),
+        horaires_preferes: horairesPreferesResult.counts,
+        horaires_preferes_respondents: horairesPreferesResult.respondentCount,
+        moments_disponibles: momentsDisponiblesResult.counts, // Non charté actuellement
+        moments_disponibles_respondents: momentsDisponiblesResult.respondentCount, // Non charté actuellement
+        services_annexes: servicesAnnexesResult.counts,
+        services_annexes_respondents: servicesAnnexesResult.respondentCount,
+        services_accompagnement: servicesAccompagnementResult.counts,
+        services_accompagnement_respondents: servicesAccompagnementResult.respondentCount,
+        evenements_inedits: countValues(data, 'Serais-tu intéressé par des événements inédits ?'), // Ajouté
+        conseils_pairs: countValues(data, 'Serais-tu plus à l\'aise à l\'idée de demander des conseils à des gens de ton âge ?'), // Ajouté
+        ambiance_souhaitee: countValues(data, 'Quelle ambiance souhaiterais-tu retrouver dans la salle ?'), // Ajouté
+        
+        // Équipements prioritaires
+        equipements_prioritaires: calculateEquipmentPriorities(data)
+    };
     
-    return counts;
+    // Calculer les statistiques globales
+    calculateGlobalStats();
+    
+    // Générer tous les graphiques
+    generateAllCharts();
 }
 
 // Fonction pour calculer les priorités d'équipements
@@ -481,162 +323,193 @@ function calculateGlobalStats() {
 // Fonction pour générer tous les graphiques
 function generateAllCharts() {
     if (!processedData) return;
-    
+
     // Détruire les graphiques existants
-    Object.values(charts).forEach(chart => {
-        if (chart) chart.destroy();
+    Object.keys(charts).forEach(key => {
+        if (charts[key]) {
+            charts[key].destroy();
+            delete charts[key]; // Supprimer la référence
+        }
     });
-    
-    // Graphiques du tableau de bord
-    charts.interestChart = createBarChart('interestChart', 
+    charts = {}; // Réinitialiser l'objet charts
+
+    // --- Graphiques du tableau de bord ---
+    charts.interestChart = createBarChart('interestChart',
         'Intérêt pour une salle de sport étudiante participative',
         Object.keys(processedData.interet_salle_etudiante),
         Object.values(processedData.interet_salle_etudiante),
         'rgb(78, 115, 223)'
     );
-    
-    charts.priceChart = createBarChart('priceChart', 
+
+    charts.priceChart = createBarChart('priceChart',
         'Prix mensuel raisonnable selon les étudiants',
         Object.keys(processedData.prix_raisonnable),
         Object.values(processedData.prix_raisonnable),
         'rgb(28, 200, 138)'
     );
-    
-    // Graphiques du profil des répondants
-    charts.genderChart = createPieChart('genderChart', 
+
+    // --- Graphiques du profil des répondants ---
+    charts.genderChart = createPieChart('genderChart',
         'Répartition par sexe',
         Object.keys(processedData.sexe),
         Object.values(processedData.sexe)
     );
-    
-    charts.ageChart = createPieChart('ageChart', 
+
+    charts.ageChart = createPieChart('ageChart',
         'Répartition par âge',
         Object.keys(processedData.age),
         Object.values(processedData.age)
     );
-    
-    charts.educationChart = createPieChart('educationChart', 
+
+    charts.educationChart = createPieChart('educationChart',
         'Niveau d\'études',
         Object.keys(processedData.niveau_etude),
         Object.values(processedData.niveau_etude)
     );
-    
-    charts.fieldOfStudyChart = createHorizontalBarChart('fieldOfStudyChart', 
+
+    charts.fieldOfStudyChart = createHorizontalBarChart('fieldOfStudyChart',
         'Filières d\'études',
         Object.keys(processedData.filiere),
         Object.values(processedData.filiere),
         'rgb(54, 185, 204)'
     );
-    
-    charts.incomeSourceChart = createHorizontalBarChart('incomeSourceChart', 
-        'Sources de revenus',
+
+    // !! GRAPHIQUE POSANT PROBLÈME POTENTIEL !!
+    charts.incomeSourceChart = createHorizontalBarChart('incomeSourceChart',
+        'Sources de revenus (% des répondants)',
         Object.keys(processedData.sources_revenu),
         Object.values(processedData.sources_revenu),
-        'rgb(246, 194, 62)'
+        'rgb(246, 194, 62)',
+        processedData.sources_revenu_respondents
     );
-    
-    // Graphiques des pratiques sportives
-    charts.sportFrequencyChart = createPieChart('sportFrequencyChart', 
+
+    // --- Graphiques des pratiques sportives ---
+    charts.sportFrequencyChart = createPieChart('sportFrequencyChart',
         'Fréquence de pratique sportive',
         Object.keys(processedData.pratique_sportive),
         Object.values(processedData.pratique_sportive)
     );
-    
-    charts.sportTypesChart = createHorizontalBarChart('sportTypesChart', 
-        'Types de sports pratiqués',
+
+    // !! GRAPHIQUE POSANT PROBLÈME POTENTIEL !!
+    charts.sportTypesChart = createHorizontalBarChart('sportTypesChart',
+        'Types de sports pratiqués (% des répondants)',
         Object.keys(processedData.sports_pratiques),
         Object.values(processedData.sports_pratiques),
-        'rgb(78, 115, 223)'
+        'rgb(78, 115, 223)',
+        processedData.sports_pratiques_respondents
     );
-    
-    charts.sportReasonsChart = createHorizontalBarChart('sportReasonsChart', 
-        'Raisons de la pratique sportive',
+
+    // !! GRAPHIQUE POSANT PROBLÈME POTENTIEL !!
+    charts.sportReasonsChart = createHorizontalBarChart('sportReasonsChart',
+        'Raisons de la pratique sportive (% des répondants)',
         Object.keys(processedData.raisons_pratique),
         Object.values(processedData.raisons_pratique),
-        'rgb(28, 200, 138)'
+        'rgb(28, 200, 138)',
+        processedData.raisons_pratique_respondents
     );
-    
-    charts.gymAttendanceChart = createPieChart('gymAttendanceChart', 
+
+    charts.gymAttendanceChart = createPieChart('gymAttendanceChart',
         'Fréquentation des salles de sport',
         Object.keys(processedData.frequentation_salle),
         Object.values(processedData.frequentation_salle)
     );
-    
-    charts.nonAttendanceReasonsChart = createHorizontalBarChart('nonAttendanceReasonsChart', 
-        'Raisons de non-fréquentation des salles de sport',
+
+    // !! GRAPHIQUE POSANT PROBLÈME POTENTIEL !!
+    charts.nonAttendanceReasonsChart = createHorizontalBarChart('nonAttendanceReasonsChart',
+        'Raisons de non-fréquentation (% des répondants)',
         Object.keys(processedData.raisons_non_frequentation),
         Object.values(processedData.raisons_non_frequentation),
-        'rgb(246, 194, 62)'
+        'rgb(246, 194, 62)',
+        processedData.raisons_non_frequentation_respondents
     );
-    
-    // Nouveaux graphiques demandés
-    charts.gymTypeChart = createPieChart('gymTypeChart', 
+
+    charts.gymTypeChart = createPieChart('gymTypeChart',
         'Types de salles fréquentées',
         Object.keys(processedData.type_salle),
         Object.values(processedData.type_salle),
         'rgb(54, 185, 204)'
     );
-    
-    charts.currentPriceChart = createBarChart('currentPriceChart', 
+
+    charts.currentPriceChart = createBarChart('currentPriceChart',
         'Prix actuellement payé par mois',
         Object.keys(processedData.prix_paye),
         Object.values(processedData.prix_paye),
         'rgb(246, 194, 62)'
     );
-    
-    charts.participationTimeChart = createBarChart('participationTimeChart', 
+
+    charts.participationTimeChart = createBarChart('participationTimeChart',
         'Temps hebdomadaire que les étudiants seraient prêts à donner',
         Object.keys(processedData.temps_participation),
         Object.values(processedData.temps_participation),
         'rgb(78, 115, 223)'
     );
-    
-    // Graphiques des préférences
-    charts.preferredHoursChart = createHorizontalBarChart('preferredHoursChart', 
-        'Horaires préférés',
+
+    // --- Graphiques des préférences ---
+    charts.preferredHoursChart = createHorizontalBarChart('preferredHoursChart',
+        'Horaires préférés (% des répondants)', // Titre mis à jour
         Object.keys(processedData.horaires_preferes),
         Object.values(processedData.horaires_preferes),
-        'rgb(78, 115, 223)'
+        'rgb(78, 115, 223)',
+        processedData.horaires_preferes_respondents // Passer le compte des répondants
     );
-    
-    charts.additionalServicesChart = createHorizontalBarChart('additionalServicesChart', 
-        'Services annexes souhaités',
+
+    charts.additionalServicesChart = createHorizontalBarChart('additionalServicesChart',
+        'Services annexes souhaités (% des répondants)', // Titre mis à jour
         Object.keys(processedData.services_annexes),
         Object.values(processedData.services_annexes),
-        'rgb(28, 200, 138)'
+        'rgb(28, 200, 138)',
+        processedData.services_annexes_respondents // Passer le compte des répondants
     );
-    
-    charts.supportServicesChart = createHorizontalBarChart('supportServicesChart', 
-        'Services d\'accompagnement',
+
+    charts.supportServicesChart = createHorizontalBarChart('supportServicesChart',
+        'Services d\'accompagnement (% des répondants)', // Titre mis à jour
         Object.keys(processedData.services_accompagnement),
         Object.values(processedData.services_accompagnement),
-        'rgb(54, 185, 204)'
+        'rgb(54, 185, 204)',
+        processedData.services_accompagnement_respondents // Passer le compte des répondants
     );
-    
-    charts.atmosphereChart = createPieChart('atmosphereChart', 
+
+    charts.atmosphereChart = createPieChart('atmosphereChart',
         'Ambiance souhaitée',
         Object.keys(processedData.ambiance_souhaitee),
         Object.values(processedData.ambiance_souhaitee)
     );
-    
-    // Graphique des équipements prioritaires
+
+    // --- Graphique des équipements prioritaires ---
     const sortedEquipment = Object.entries(processedData.equipements_prioritaires)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 10);
-    
-    charts.equipmentPriorityChart = createHorizontalBarChart('equipmentPriorityChart', 
+
+    charts.equipmentPriorityChart = createHorizontalBarChart('equipmentPriorityChart',
         'Équipements prioritaires (score pondéré)',
         sortedEquipment.map(item => item[0]),
         sortedEquipment.map(item => item[1]),
-        'rgb(246, 194, 62)'
+        'rgb(246, 194, 62)' // Ne pas passer respondentCount ici
     );
+
+    // Vérifier si des graphiques n'ont pas pu être créés
+    const chartIds = Object.keys(charts);
+    document.querySelectorAll('canvas').forEach(canvas => {
+        if (!chartIds.includes(canvas.id) && canvas.id !== 'crossAnalysisChart') { // Exclure l'analyse croisée qui est générée séparément
+            console.warn(`Le graphique pour le canvas '${canvas.id}' n'a pas été généré.`);
+            // Optionnel: Afficher un message sur le canvas
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                 ctx.clearRect(0, 0, canvas.width, canvas.height); // Nettoyer au cas où
+                 ctx.font = "14px Arial";
+                 ctx.fillStyle = "#ccc";
+                 ctx.textAlign = "center";
+                 ctx.fillText("Graphique non disponible", canvas.width / 2, canvas.height / 2);
+            }
+        }
+    });
 }
 
 // Fonction pour créer un graphique en barres
 function createBarChart(canvasId, title, labels, data, backgroundColor) {
     const ctx = document.getElementById(canvasId).getContext('2d');
     
-    return new Chart(ctx, {
+    const chart = new Chart(ctx, {
         type: 'bar',
         data: {
             labels: labels,
@@ -653,31 +526,73 @@ function createBarChart(canvasId, title, labels, data, backgroundColor) {
             maintainAspectRatio: false,
             scales: {
                 y: {
-                    beginAtZero: true
+                    beginAtZero: true,
+                    ticks: {
+                        // Sera mis à jour lors du basculement
+                        callback: function(value) { return value; } 
+                    }
                 }
             },
             plugins: {
                 title: {
                     display: true,
                     text: title
+                },
+                tooltip: {
+                    callbacks: {
+                        // Sera mis à jour lors du basculement
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += context.parsed.y;
+                            }
+                            return label;
+                        }
+                    }
                 }
             }
         }
     });
+    
+    // Stocker les données originales et l'état initial
+    chart.originalData = data.slice(); // Copie des données
+    chart.isPercentage = false;
+    
+    return chart;
 }
 
 // Fonction pour créer un graphique en barres horizontales
-function createHorizontalBarChart(canvasId, title, labels, data, backgroundColor) {
-    const ctx = document.getElementById(canvasId).getContext('2d');
-    
+function createHorizontalBarChart(canvasId, title, labels, data, backgroundColor, respondentCount = null) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) {
+        console.error(`Canvas element with ID '${canvasId}' not found.`);
+        return null;
+    }
+    const ctx = canvas.getContext('2d');
+
+    // Vérifier si les données sont valides
+    if (!labels || !data || labels.length === 0 || data.length === 0 || labels.length !== data.length) {
+        console.error(`Données invalides ou vides pour le graphique '${canvasId}'. Labels:`, labels, "Data:", data);
+        // Afficher un message d'erreur sur le canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // Nettoyer au cas où
+        ctx.font = "14px Arial";
+        ctx.fillStyle = "red";
+        ctx.textAlign = "center";
+        ctx.fillText("Erreur: Données invalides ou vides", canvas.width / 2, canvas.height / 2);
+        return null; // Indiquer l'échec de la création
+    }
+
     // Trier les données par ordre décroissant
     const combined = labels.map((label, i) => ({ label, value: data[i] }));
     combined.sort((a, b) => b.value - a.value);
-    
+
     const sortedLabels = combined.map(item => item.label);
     const sortedData = combined.map(item => item.value);
-    
-    return new Chart(ctx, {
+
+    const chart = new Chart(ctx, {
         type: 'bar',
         data: {
             labels: sortedLabels,
@@ -695,17 +610,51 @@ function createHorizontalBarChart(canvasId, title, labels, data, backgroundColor
             maintainAspectRatio: false,
             scales: {
                 x: {
-                    beginAtZero: true
+                    beginAtZero: true,
+                     ticks: {
+                        // Sera mis à jour lors du basculement
+                        callback: function(value) { return value; } 
+                    }
                 }
             },
             plugins: {
                 title: {
                     display: true,
                     text: title
+                },
+                 tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            let value = context.parsed.x;
+                            if (value !== null) {
+                                // Le formatage sera géré par toggleChartPercentage
+                                label += value;
+                            }
+                            return label;
+                        }
+                    }
                 }
             }
         }
     });
+
+    // Stocker les données originales, l'état initial, et si c'est multiple choice
+    chart.originalData = sortedData.slice();
+    chart.originalLabels = sortedLabels.slice();
+    chart.isPercentage = false;
+    if (respondentCount !== null && respondentCount > 0) {
+        chart.isMultipleChoice = true;
+        chart.respondentCount = respondentCount;
+    } else {
+        chart.isMultipleChoice = false;
+        chart.respondentCount = null;
+    }
+
+    return chart;
 }
 
 // Fonction pour créer un graphique en camembert
@@ -720,7 +669,7 @@ function createPieChart(canvasId, title, labels, data) {
         return `rgba(${r}, ${g}, ${b}, 0.8)`;
     });
     
-    return new Chart(ctx, {
+    const chart = new Chart(ctx, {
         type: 'pie',
         data: {
             labels: labels,
@@ -742,10 +691,120 @@ function createPieChart(canvasId, title, labels, data) {
                 },
                 legend: {
                     position: 'right'
+                },
+                tooltip: {
+                     callbacks: {
+                        // Sera mis à jour lors du basculement
+                        label: function(context) {
+                            let label = context.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            let value = context.parsed;
+                             if (context.chart.isPercentage) {
+                                label += value.toFixed(1) + '%';
+                            } else {
+                                label += value;
+                            }
+                            return label;
+                        }
+                    }
                 }
             }
         }
     });
+
+    // Stocker les données originales et l'état initial
+    chart.originalData = data.slice(); // Copie des données
+    chart.isPercentage = false;
+
+    return chart;
+}
+
+// Fonction pour basculer l'affichage d'un graphique en pourcentage
+function toggleChartPercentage(chartId) {
+    const chart = charts[chartId];
+    // Ajouter une vérification pour respondentCount si isMultipleChoice est vrai
+    if (!chart || !chart.originalData || (chart.isMultipleChoice && typeof chart.respondentCount !== 'number')) return;
+
+    const button = document.querySelector(`.toggle-percentage[data-chart-id="${chartId}"]`);
+
+    if (chart.isPercentage) {
+        // Revenir aux données originales
+        chart.data.datasets[0].data = chart.originalData.slice();
+        chart.isPercentage = false;
+        if (button) button.title = "Afficher en pourcentage";
+
+        // Mettre à jour les options des axes et tooltips pour les valeurs absolues
+        // (La logique existante pour les tooltips et ticks est correcte pour afficher la valeur brute)
+        if (chart.config.type === 'bar' || chart.config.type === 'horizontalBar') { // Correction: 'bar' au lieu de 'horizontalBar' pour le type
+            const axis = chart.config.options.indexAxis === 'y' ? 'x' : 'y';
+            chart.config.options.scales[axis].ticks.callback = function(value) { return value; }; // Afficher la valeur brute
+            chart.config.options.plugins.tooltip.callbacks.label = function(context) {
+                let label = context.dataset.label || '';
+                if (label) label += ': ';
+                const value = chart.config.options.indexAxis === 'y' ? context.parsed.x : context.parsed.y;
+                if (value !== null) label += value; // Afficher la valeur brute
+                return label;
+            };
+        } else if (chart.config.type === 'pie') {
+             chart.config.options.plugins.tooltip.callbacks.label = function(context) {
+                let label = context.label || '';
+                if (label) label += ': ';
+                let value = context.parsed;
+                label += value; // Afficher la valeur brute
+                return label;
+            };
+        }
+
+
+    } else {
+        // Calculer les pourcentages
+        let percentageData;
+        // Utiliser respondentCount si c'est un graphique à choix multiples
+        if (chart.isMultipleChoice && chart.respondentCount > 0) {
+            const totalRespondentsForQuestion = chart.respondentCount;
+            percentageData = chart.originalData.map(value => (value / totalRespondentsForQuestion) * 100);
+        } else {
+            // Logique originale pour les graphiques à choix unique ou non basés sur les répondants
+            const total = chart.originalData.reduce((sum, value) => sum + value, 0);
+            if (total === 0) {
+                 percentageData = chart.originalData.map(() => 0); // Gérer la division par zéro
+            } else {
+                 percentageData = chart.originalData.map(value => (value / total) * 100);
+            }
+        }
+
+        chart.data.datasets[0].data = percentageData;
+        chart.isPercentage = true;
+        if (button) button.title = "Afficher en valeurs absolues";
+
+         // Mettre à jour les options des axes et tooltips pour les pourcentages
+        if (chart.config.type === 'bar' || chart.config.type === 'horizontalBar') { // Correction: 'bar' au lieu de 'horizontalBar' pour le type
+            const axis = chart.config.options.indexAxis === 'y' ? 'x' : 'y';
+            // Afficher le pourcentage sur l'axe
+            chart.config.options.scales[axis].ticks.callback = function(value) { return value.toFixed(1) + '%'; };
+             // Afficher le pourcentage dans le tooltip
+             chart.config.options.plugins.tooltip.callbacks.label = function(context) {
+                let label = context.dataset.label || '';
+                if (label) label += ': ';
+                const value = chart.config.options.indexAxis === 'y' ? context.parsed.x : context.parsed.y;
+                if (value !== null) label += value.toFixed(1) + '%';
+                return label;
+            };
+        } else if (chart.config.type === 'pie') {
+             // Afficher le pourcentage dans le tooltip
+             chart.config.options.plugins.tooltip.callbacks.label = function(context) {
+                let label = context.label || '';
+                if (label) label += ': ';
+                let value = context.parsed;
+                label += value.toFixed(1) + '%';
+                return label;
+            };
+        }
+    }
+
+    chart.update();
 }
 
 // Fonction pour générer une analyse croisée
@@ -1088,10 +1147,12 @@ function generateGeneralReport(length, style) {
     if (style === 'academic') {
         report += `<p>Le profil démographique des répondants est majoritairement composé de ${mainGender.toLowerCase()}s (${mainGenderPercentage}%), avec une prédominance de la tranche d'âge ${mainAge.toLowerCase()} (${mainAgePercentage}%). Cette composition reflète la population cible du projet et permet d'adapter l'offre en conséquence.</p>`;
     } else if (style === 'business') {
-        report += `<p>Notre cible principale se compose à ${mainGenderPercentage}% de ${mainGender.toLowerCase()}s, principalement âgés de ${mainAge.toLowerCase()} (${mainAgePercentage}%). Cette connaissance de notre audience nous permettra d'affiner notre proposition de valeur et notre stratégie marketing pour maximiser l'impact.</p>`;
+        report += `<p>Notre cible principale se compose à ${mainGenderPercentage}% de ${mainGender.toLowerCase()}s, principalement âgés de ${mainAge.toLowerCase()} (${mainAgePercentage}%). Cette connaissance précise de notre audience nous permettra d'affiner notre proposition de valeur et notre communication.</p>`;
     } else {
         report += `<p>Qui a répondu à notre questionnaire ? Surtout des ${mainGender.toLowerCase()}s (${mainGenderPercentage}%) et principalement des ${mainAge.toLowerCase()} (${mainAgePercentage}%). C'est important de le savoir pour créer une salle qui leur plaira vraiment !</p>`;
     }
+    
+    if (length === 'short') return report;
     
     // Paragraphe 4 - Préférences et équipements
     const mainAtmosphere = Object.entries(processedData.ambiance_souhaitee).sort((a, b) => b[1] - a[1])[0][0];
@@ -1110,12 +1171,14 @@ function generateGeneralReport(length, style) {
     }
     
     // Paragraphe 5 - Recommandations (uniquement pour les rapports longs)
-    if (style === 'academic') {
-        report += `<p>À la lumière de ces résultats, il est recommandé de développer une offre tarifaire autour de ${averagePrice}€ mensuel, avec possibilité de réduction pour les étudiants participant activement à la gestion. L'aménagement devrait privilégier une ambiance "${mainAtmosphere}" et les investissements matériels devraient se concentrer sur les équipements prioritaires identifiés. Une stratégie de communication ciblant principalement les ${mainGender.toLowerCase()}s de ${mainAge.toLowerCase()} serait également pertinente pour maximiser l'impact du lancement.</p>`;
-    } else if (style === 'business') {
-        report += `<p>Recommandations stratégiques : positionner notre offre tarifaire autour de ${averagePrice}€/mois avec un système d'avantages pour les membres actifs ; créer un environnement "${mainAtmosphere}" distinctif ; investir prioritairement dans les équipements plébiscités ; et déployer une campagne marketing ciblant spécifiquement les ${mainGender.toLowerCase()}s de ${mainAge.toLowerCase()}. Ces actions nous permettront de maximiser notre taux de conversion et d'établir rapidement une base d'adhérents fidèles.</p>`;
-    } else {
-        report += `<p>Alors, on fait quoi maintenant ? On fixe un prix autour de ${averagePrice}€ par mois, avec des réducs pour ceux qui donnent un coup de main. On crée une ambiance "${mainAtmosphere}" qui donne envie de venir, on achète d'abord les équipements les plus demandés, et on communique surtout auprès des ${mainGender.toLowerCase()}s de ${mainAge.toLowerCase()} qui sont notre public principal. Comme ça, on est sûrs de démarrer sur les chapeaux de roues !</p>`;
+    if (length !== 'short') {
+        if (style === 'academic') {
+            report += `<p>À la lumière de ces résultats, il est recommandé de développer une offre tarifaire autour de ${averagePrice}€ mensuel, avec possibilité de réduction pour les étudiants participant activement à la gestion. L'aménagement devrait privilégier une ambiance "${mainAtmosphere}" et les investissements matériels devraient se concentrer sur les équipements prioritaires identifiés. Une stratégie de communication ciblant principalement les ${mainGender.toLowerCase()}s de ${mainAge.toLowerCase()} serait également pertinente pour maximiser l'impact du lancement.</p>`;
+        } else if (style === 'business') {
+            report += `<p>Recommandations stratégiques : positionner notre offre tarifaire autour de ${averagePrice}€/mois avec un système d'avantages pour les membres actifs ; créer un environnement "${mainAtmosphere}" distinctif ; investir prioritairement dans les équipements plébiscités ; et déployer une campagne marketing ciblant spécifiquement les ${mainGender.toLowerCase()}s de ${mainAge.toLowerCase()}. Ces actions nous permettront de maximiser notre taux de conversion et d'établir rapidement une base d'adhérents fidèles.</p>`;
+        } else {
+            report += `<p>Alors, on fait quoi maintenant ? On fixe un prix autour de ${averagePrice}€ par mois, avec des réducs pour ceux qui donnent un coup de main. On crée une ambiance "${mainAtmosphere}" qui donne envie de venir, on achète d'abord les équipements les plus demandés, et on communique surtout auprès des ${mainGender.toLowerCase()}s de ${mainAge.toLowerCase()} qui sont notre public principal. Comme ça, on est sûrs de démarrer sur les chapeaux de roues !</p>`;
+        }
     }
     
     return report;
@@ -1181,7 +1244,7 @@ function generateProfileReport(length, style) {
         report += `<p>Niveau études, on a surtout des étudiants en ${educationDistribution[0].level} (${educationDistribution[0].percentage}%). Les filières les plus représentées ? ${fieldDistribution.map(f => f.field).join(', ')}. Ça nous donne une bonne idée de qui on va retrouver dans notre salle !</p>`;
     }
     
-    if (length === 'medium') return report;
+    if (length === 'short') return report;
     
     // Paragraphe 3 - Situation financière
     const hasIncome = processedData.revenu['Oui'] || 0;
@@ -1336,7 +1399,231 @@ function generateSportPracticesReport(length, style) {
     
     // Paragraphe 5 - Implications pour le projet
     if (style === 'academic') {
-        report += `<p>En synthèse, l'analyse des pratiques sportives des répondants met en lumière un potentiel significatif pour une salle de sport étudiante participative, à condition d'adresser spécifiquement les obstacles identifiés (notamment le coût et l'accessibilité) et de valoriser les motivations principales liées à la santé et à l'apparence physique. L'offre devra être centrée sur les activités de musculation/fitness, tout en proposant une approche inclusive qui permette aux non-pratiquants de s'initier dans un environnement bienveillant. Le modèle participatif pourrait également capitaliser sur l'autonomie déjà démontrée par une proportion significative de répondants pratiquant à domicile.</p>`;
+        report += `<p>En synthèse, l'analyse des pratiques sportives nous permet de conclure qu'il existe un potentiel significatif pour une salle de sport étudiante participative, à condition d'adresser spécifiquement les obstacles identifiés (notamment le coût et l'accessibilité) et de valoriser les motivations principales liées à la santé et à l'apparence physique. L'offre devra être centrée sur les activités de musculation/fitness, tout en proposant une approche inclusive qui permette aux non-pratiquants de s'initier dans un environnement bienveillant. Le modèle participatif pourrait également capitaliser sur l'autonomie déjà démontrée par une proportion significative de répondants pratiquant à domicile.</p>`;
+    } else if (style === 'business') {
+        report += `<p>Ces données sur les pratiques sportives nous permettent d'affiner notre proposition de valeur : une salle centrée sur la musculation/fitness, avec une tarification accessible pour lever le frein financier, une localisation stratégique pour maximiser l'accessibilité, et un environnement inclusif qui démystifie l'utilisation des équipements. Notre communication mettra en avant les bénéfices pour la santé et l'apparence physique, tandis que notre modèle participatif valorisera l'autonomie et l'engagement des membres, créant ainsi une offre différenciante sur le marché des salles de sport.</p>`;
+    } else {
+        report += `<p>En résumé, notre salle doit proposer surtout de la musculation et du fitness, avec des prix abordables (c'est le principal frein !), être bien placée, et offrir un environnement où on se sent à l'aise même quand on débute. On doit mettre en avant les bienfaits pour la santé et l'apparence dans notre communication, et valoriser la participation de chacun. Comme ça, on se démarquera vraiment des salles classiques !</p>`;
+    }
+    
+    return report;
+}
+
+// Fonction pour générer un rapport sur le profil des répondants
+function generateProfileReport(length, style) {
+    let report = '';
+    
+    // Calculer quelques statistiques
+    const totalRespondents = rawData.length;
+    
+    const genderDistribution = Object.entries(processedData.sexe)
+        .map(([gender, count]) => ({ 
+            gender, 
+            count, 
+            percentage: Math.round((count / totalRespondents) * 100) 
+        }))
+        .sort((a, b) => b.count - a.count);
+    
+    const ageDistribution = Object.entries(processedData.age)
+        .map(([age, count]) => ({ 
+            age, 
+            count, 
+            percentage: Math.round((count / totalRespondents) * 100) 
+        }))
+        .sort((a, b) => b.count - a.count);
+    
+    const educationDistribution = Object.entries(processedData.niveau_etude)
+        .map(([level, count]) => ({ 
+            level, 
+            count, 
+            percentage: Math.round((count / totalRespondents) * 100) 
+        }))
+        .sort((a, b) => b.count - a.count);
+    
+    const fieldDistribution = Object.entries(processedData.filiere)
+        .map(([field, count]) => ({ 
+            field,            count, 
+            percentage: Math.round((count / totalRespondents) * 100) 
+        }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3);
+    
+    // Paragraphe 1 - Répartition par sexe et âge
+    if (style === 'academic') {
+        report += `<p>L'analyse démographique des ${totalRespondents} répondants révèle une répartition par sexe de ${genderDistribution.map(g => `${g.percentage}% de ${g.gender.toLowerCase()}s`).join(' et ')}. La distribution par âge montre une prédominance de la tranche ${ageDistribution[0].age.toLowerCase()} (${ageDistribution[0].percentage}%), suivie par ${ageDistribution.length > 1 ? ageDistribution[1].age.toLowerCase() + ' (' + ageDistribution[1].percentage + '%)' : 'aucune autre tranche significative'}.</p>`;
+    } else if (style === 'business') {
+        report += `<p>Le profil type de notre clientèle cible se compose à ${genderDistribution[0].percentage}% de ${genderDistribution[0].gender.toLowerCase()}s, principalement dans la tranche d'âge ${ageDistribution[0].age.toLowerCase()} (${ageDistribution[0].percentage}%). Cette connaissance précise de notre audience nous permettra d'affiner notre proposition de valeur et notre communication.</p>`;
+    } else {
+        report += `<p>Qui sont les personnes intéressées par notre salle de sport ? Surtout des ${genderDistribution[0].gender.toLowerCase()}s (${genderDistribution[0].percentage}%) et principalement des ${ageDistribution[0].age.toLowerCase()} (${ageDistribution[0].percentage}%). C'est notre public principal !</p>`;
+    }
+    
+    if (length === 'short') return report;
+    
+    // Paragraphe 2 - Niveau d'études et filières
+    if (style === 'academic') {
+        report += `<p>En termes de niveau d'études, ${educationDistribution[0].percentage}% des répondants sont en ${educationDistribution[0].level}. Les filières les plus représentées sont ${fieldDistribution.map(f => f.field).join(', ')}, ce qui reflète la diversité des parcours académiques au sein de la population étudiante ciblée.</p>`;
+    } else if (style === 'business') {
+        report += `<p>Notre cible se compose majoritairement d'étudiants en ${educationDistribution[0].level} (${educationDistribution[0].percentage}%), issus principalement des filières ${fieldDistribution.map(f => f.field).join(', ')}. Cette information nous guidera dans le développement de partenariats stratégiques avec les établissements d'enseignement correspondants.</p>`;
+    } else {
+        report += `<p>Niveau études, on a surtout des étudiants en ${educationDistribution[0].level} (${educationDistribution[0].percentage}%). Les filières les plus représentées ? ${fieldDistribution.map(f => f.field).join(', ')}. Ça nous donne une bonne idée de qui on va retrouver dans notre salle !</p>`;
+    }
+    
+    if (length === 'short') return report;
+    
+    // Paragraphe 3 - Situation financière
+    const hasIncome = processedData.revenu['Oui'] || 0;
+    const hasIncomePercentage = Math.round((hasIncome / totalRespondents) * 100);
+    
+    const incomeSourcesDistribution = Object.entries(processedData.sources_revenu)
+        .map(([source, count]) => ({ 
+            source, 
+            count, 
+            percentage: Math.round((count / hasIncome) * 100) 
+        }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3);
+    
+    if (style === 'academic') {
+        report += `<p>L'analyse de la situation financière indique que ${hasIncomePercentage}% des répondants disposent d'un revenu. Parmi ceux-ci, les principales sources de revenus sont ${incomeSourcesDistribution.map(s => `${s.source} (${s.percentage}%)`).join(', ')}. Ces données sont essentielles pour évaluer la capacité financière de la population cible et adapter l'offre tarifaire en conséquence.</p>`;
+    } else if (style === 'business') {
+        report += `<p>Sur le plan financier, ${hasIncomePercentage}% de notre cible dispose d'un revenu, principalement issu de ${incomeSourcesDistribution.map(s => s.source.toLowerCase()).join(', ')}. Cette information est cruciale pour notre politique tarifaire et nos offres promotionnelles, qui devront tenir compte de cette réalité économique.</p>`;
+    } else {
+        report += `<p>${hasIncomePercentage}% des étudiants interrogés ont un revenu, qui vient surtout de ${incomeSourcesDistribution.map(s => s.source.toLowerCase()).join(', ')}. C'est important de le savoir pour fixer des prix qui leur correspondent vraiment !</p>`;
+    }
+    
+    // Paragraphe 4 - Lieu de résidence et transport
+    const residenceDistribution = Object.entries(processedData.residence)
+        .map(([residence, count]) => ({ 
+            residence, 
+            count, 
+            percentage: Math.round((count / totalRespondents) * 100) 
+        }))
+        .sort((a, b) => b.count - a.count);
+    
+    const transportDistribution = Object.entries(processedData.transport)
+        .map(([transport, count]) => ({ 
+            transport, 
+            count, 
+            percentage: Math.round((count / totalRespondents) * 100) 
+        }))
+        .sort((a, b) => b.count - a.count);
+    
+    if (style === 'academic') {
+        report += `<p>Concernant le lieu de résidence, ${residenceDistribution[0].percentage}% des répondants vivent en ${residenceDistribution[0].residence.toLowerCase()}. Le mode de transport principal est ${transportDistribution[0].transport} pour ${transportDistribution[0].percentage}% d'entre eux. Ces éléments logistiques sont à prendre en compte dans le choix de l'emplacement de la salle de sport pour maximiser l'accessibilité.</p>`;
+    } else if (style === 'business') {
+        report += `<p>L'analyse géographique révèle que ${residenceDistribution[0].percentage}% de notre cible réside en ${residenceDistribution[0].residence.toLowerCase()}, avec une préférence pour ${transportDistribution[0].transport} comme moyen de transport (${transportDistribution[0].percentage}%). Ces données orienteront notre stratégie d'implantation pour garantir une accessibilité optimale.</p>`;
+    } else {
+        report += `<p>Où habitent nos futurs clients ? Surtout en ${residenceDistribution[0].residence.toLowerCase()} (${residenceDistribution[0].percentage}%). Et ils se déplacent principalement en ${transportDistribution[0].transport} (${transportDistribution[0].percentage}%). On devra choisir un emplacement qui tient compte de ça !</p>`;
+    }
+    
+    // Paragraphe 5 - Implications pour le projet
+    if (style === 'academic') {
+        report += `<p>Ces données démographiques et socio-économiques permettent d'établir un profil précis de la population cible du projet de salle de sport étudiante participative. La prédominance de ${genderDistribution[0].gender.toLowerCase()}s de ${ageDistribution[0].age.toLowerCase()}, principalement en ${educationDistribution[0].level} et issus de filières variées, avec une proportion significative disposant de revenus limités, oriente la conception de l'offre vers un modèle accessible financièrement et adapté aux contraintes et préférences de ce public spécifique.</p>`;
+    } else if (style === 'business') {
+        report += `<p>En synthèse, le profil de notre clientèle cible nous oriente vers une proposition de valeur centrée sur l'accessibilité financière, avec une communication ciblée vers les ${genderDistribution[0].gender.toLowerCase()}s de ${ageDistribution[0].age.toLowerCase()} en ${educationDistribution[0].level}. Notre stratégie d'implantation devra privilégier la proximité avec les zones de résidence étudiante et l'accessibilité par ${transportDistribution[0].transport}, tandis que notre politique tarifaire devra tenir compte des contraintes budgétaires de cette population.</p>`;
+    } else {
+        report += `<p>En résumé, notre salle de sport doit être pensée pour des ${genderDistribution[0].gender.toLowerCase()}s jeunes, principalement en ${educationDistribution[0].level}, avec un budget limité. On doit choisir un emplacement accessible facilement en ${transportDistribution[0].transport}, proposer des prix adaptés à leur budget, et créer une ambiance qui leur plaît. Comme ça, on sera sûrs de les attirer !</p>`;
+    }
+    
+    return report;
+}
+
+// Fonction pour générer un rapport sur les pratiques sportives
+function generateSportPracticesReport(length, style) {
+    // Fonctions similaires pour les autres types de rapports
+    let report = '';
+    
+    // Calculer quelques statistiques
+    const totalRespondents = rawData.length;
+    
+    const sportFrequency = Object.entries(processedData.pratique_sportive)
+        .map(([frequency, count]) => ({ 
+            frequency, 
+            count, 
+            percentage: Math.round((count / totalRespondents) * 100) 
+        }))
+        .sort((a, b) => b.count - a.count);
+    
+    const sportTypes = Object.entries(processedData.sports_pratiques)
+        .map(([type, count]) => ({ 
+            type, 
+            count, 
+            percentage: Math.round((count / totalRespondents) * 100) 
+        }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3);
+    
+    const sportReasons = Object.entries(processedData.raisons_pratique)
+        .map(([reason, count]) => ({ 
+            reason, 
+            count, 
+            percentage: Math.round((count / totalRespondents) * 100) 
+        }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3);
+    
+    // Paragraphe 1 - Fréquence et types de sports pratiqués
+    if (style === 'academic') {
+        report += `<p>L'analyse des pratiques sportives des répondants révèle que ${sportFrequency[0].percentage}% d'entre eux ${sportFrequency[0].frequency.toLowerCase()}. Les activités les plus pratiquées sont ${sportTypes.map(t => t.type).join(', ')}, ce qui reflète une préférence marquée pour les sports individuels et de renforcement musculaire.</p>`;
+    } else if (style === 'business') {
+        report += `<p>Notre étude montre que ${sportFrequency[0].percentage}% de notre cible ${sportFrequency[0].frequency.toLowerCase()}, avec une préférence pour ${sportTypes.map(t => t.type).join(', ')}. Ces données orienteront notre offre d'équipements et de services pour répondre précisément aux besoins identifiés.</p>`;
+    } else {
+        report += `<p>Que font les étudiants comme sport ? ${sportFrequency[0].percentage}% ${sportFrequency[0].frequency.toLowerCase()}, et ils préfèrent surtout ${sportTypes.map(t => t.type).join(', ')}. C'est super important de le savoir pour équiper notre salle !</p>`;
+    }
+    
+    if (length === 'short') return report;
+    
+    // Paragraphe 2 - Motivations et pratique en salle
+    const gymAttendance = Object.entries(processedData.frequentation_salle)
+        .map(([attendance, count]) => ({ 
+            attendance, 
+            count, 
+            percentage: Math.round((count / totalRespondents) * 100) 
+        }))
+        .sort((a, b) => b.count - a.count);
+    
+    if (style === 'academic') {
+        report += `<p>Les principales motivations pour la pratique sportive sont ${sportReasons.map(r => r.reason).join(', ')}, ce qui souligne l'importance des bénéfices pour la santé et l'apparence physique. Concernant la fréquentation des salles de sport, ${gymAttendance[0].percentage}% des répondants déclarent ${gymAttendance[0].attendance.toLowerCase()}, ce qui indique un potentiel significatif pour le projet de salle de sport étudiante.</p>`;
+    } else if (style === 'business') {
+        report += `<p>Les motivations principales de notre cible sont ${sportReasons.map(r => r.reason).join(', ')}. Notre communication devra mettre en avant ces bénéfices pour maximiser l'engagement. Actuellement, ${gymAttendance[0].percentage}% ${gymAttendance[0].attendance.toLowerCase()}, ce qui représente à la fois un défi et une opportunité pour notre projet.</p>`;
+    } else {
+        report += `<p>Pourquoi font-ils du sport ? Surtout pour ${sportReasons.map(r => r.reason).join(', ')}. Et question salle de sport, ${gymAttendance[0].percentage}% ${gymAttendance[0].attendance.toLowerCase()}. On a donc une vraie opportunité à saisir !</p>`;
+    }
+    
+    if (length === 'medium') return report;
+    
+    // Paragraphe 3 - Raisons de non-fréquentation
+    const nonAttendanceReasons = Object.entries(processedData.raisons_non_frequentation)
+        .map(([reason, count]) => ({ 
+            reason, 
+            count
+        }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3);
+    
+    if (style === 'academic') {
+        report += `<p>Parmi les répondants ne fréquentant pas de salle de sport, les principales raisons invoquées sont ${nonAttendanceReasons.map(r => r.reason).join(', ')}. Ces obstacles identifiés constituent des points d'attention majeurs pour le développement d'une offre adaptée qui pourrait convertir ces non-pratiquants en utilisateurs réguliers.</p>`;
+    } else if (style === 'business') {
+        report += `<p>L'analyse des freins à la fréquentation des salles de sport révèle que ${nonAttendanceReasons.map(r => r.reason).join(', ')} sont les principaux obstacles. Notre proposition de valeur devra spécifiquement adresser ces points pour convertir les non-utilisateurs et élargir notre base de clients potentiels.</p>`;
+    } else {
+        report += `<p>Pourquoi certains ne vont pas en salle ? Principalement à cause de ${nonAttendanceReasons.map(r => r.reason).join(', ')}. Si on résout ces problèmes, on pourra attirer beaucoup plus de monde !</p>`;
+    }
+    
+    // Paragraphe 4 - Pratique à domicile
+    const homeWorkout = processedData.sport_chez_soi['Oui'] || 0;
+    const homeWorkoutPercentage = Math.round((homeWorkout / totalRespondents) * 100);
+    
+    if (style === 'academic') {
+        report += `<p>Il est intéressant de noter que ${homeWorkoutPercentage}% des répondants pratiquent une activité sportive à domicile. Cette tendance, potentiellement accentuée par les récentes périodes de confinement, suggère une familiarité avec la pratique autonome qui pourrait être valorisée dans un modèle participatif où les utilisateurs sont également acteurs de leur expérience sportive.</p>`;
+    } else if (style === 'business') {
+        report += `<p>La pratique sportive à domicile concerne ${homeWorkoutPercentage}% de notre cible, ce qui indique une certaine autonomie et discipline. Notre modèle participatif pourra capitaliser sur cette caractéristique en proposant des programmes hybrides combinant pratique en salle et à domicile, ainsi qu'en valorisant l'implication active des membres.</p>`;
+    } else {
+        report += `<p>${homeWorkoutPercentage}% font déjà du sport chez eux, ce qui est plutôt cool ! Ça montre qu'ils sont motivés et autonomes. On pourrait proposer des programmes qui combinent entraînements en salle et à la maison, pour s'adapter à leurs habitudes.</p>`;
+    }
+    
+    // Paragraphe 5 - Implications pour le projet
+    if (style === 'academic') {
+        report += `<p>En synthèse, l'analyse des pratiques sportives nous permet de conclure qu'il existe un potentiel significatif pour une salle de sport étudiante participative, à condition d'adresser spécifiquement les obstacles identifiés (notamment le coût et l'accessibilité) et de valoriser les motivations principales liées à la santé et à l'apparence physique. L'offre devra être centrée sur les activités de musculation/fitness, tout en proposant une approche inclusive qui permette aux non-pratiquants de s'initier dans un environnement bienveillant. Le modèle participatif pourrait également capitaliser sur l'autonomie déjà démontrée par une proportion significative de répondants pratiquant à domicile.</p>`;
     } else if (style === 'business') {
         report += `<p>Ces données sur les pratiques sportives nous permettent d'affiner notre proposition de valeur : une salle centrée sur la musculation/fitness, avec une tarification accessible pour lever le frein financier, une localisation stratégique pour maximiser l'accessibilité, et un environnement inclusif qui démystifie l'utilisation des équipements. Notre communication mettra en avant les bénéfices pour la santé et l'apparence physique, tandis que notre modèle participatif valorisera l'autonomie et l'engagement des membres, créant ainsi une offre différenciante sur le marché des salles de sport.</p>`;
     } else {
